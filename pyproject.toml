@@ -10,7 +10,9 @@ dependencies = [
     "langchain>=1.4.9",
     "langchain-openai>=1.7.4",
     "langgraph>=1.2.19",
+    "loguru>=0.7.3",
     "pydantic-settings>=2.16.2",
+    "pyyaml>=6.0.3",
     "sse-starlette>=3.6.0",
     "uvicorn>=0.54.0",
     "websockets>=17.4",
@@ -20,3 +22,13 @@ dependencies = [
 name = "aliyun"
 url = "https://mirrors.aliyun.com/pypi/simple/"
 default = true
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

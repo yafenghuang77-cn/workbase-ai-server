@@ -1,0 +1,17 @@
+server:
+  host: 127.0.0.1
+  port: 8000
+  reload: true
+  base_path: /workbase-ai
+
+logging:
+  level: DEBUG
+
+# 仅用于配置加载和校验，当前不建立数据库连接。
+mysql:
+  host: 127.0.0.1
+  port: 3306
+  database: workbase_ai
+  username: root
+  password: "" # 通过 APP_MYSQL__PASSWORD 注入真实密码。
+  charset: utf8mb4
