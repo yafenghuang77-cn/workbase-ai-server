@@ -11,7 +11,7 @@ def test_health(client):
 
 @pytest.mark.parametrize("base_path", ["", "/", "/workbase-ai", "/api/v1/"])
 def test_base_path_applies_to_health_and_documentation(monkeypatch, base_path):
-    monkeypatch.setenv("APP_SERVER__BASE_PATH", base_path)
+    monkeypatch.setenv("APP_SERVER_BASE_PATH", base_path)
     from main import create_app
 
     prefix = base_path.rstrip("/")

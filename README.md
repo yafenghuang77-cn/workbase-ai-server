@@ -1,63 +1,45 @@
 # Workbase AI Server
 
-基于 Python、FastAPI、LangChain 和 LangGraph 的 AI 服务端项目
+基于 Python、FastAPI、LangChain 和 LangGraph 的 AI 服务端项目，使用 uv 管理依赖，要求 Python >= 3.13。
 
-## 当前状态
-
-截至 2026-11-05，仓库处于初始化阶段：
-
-- 已使用 `uv` 管理依赖，通过 `uv.lock` 锁定依赖版本。
-- `main.py` 已提供 FastAPI 应用及健康检查接口，默认访问路径为 `GET /workbase-ai/health`。
-- 开发启动支持热更新，提供 Swagger UI 和 ReDoc 接口文档。
-- 已提供本地、测试、预发和生产 YAML 配置，支持通过 `APP_ENV` 选择环境及系统环境变量覆盖配置。
-- 支持配置服务路径前缀；YAML 新增字段会自动加载，无需逐个修改配置模型。
-- MySQL 已支持配置加载与校验，尚未安装数据库驱动或实现连接。
-- LangChain、LangGraph 等依赖已声明，业务模块、AI 调用和持久化尚未实现；配置加载已有单元测试。
-
-## 本地开发与启动
-
-### 环境准备
-
-- 安装 `uv`。
-- 使用 Python 3.13（`.python-version` 指定的开发版本；项目要求 Python >= 3.13）。
-- 以下命令均在仓库根目录执行。
-
-当前健康检查接口不依赖数据库、外部 AI 服务或 API Key，无需创建 `.env` 即可启动。
-
-### 安装依赖
+## 安装与启动
 
 ```bash
 uv sync
-```
-
-该命令会根据 `uv.lock` 安装依赖到 `.venv`，无需手动激活虚拟环境。如果依赖声明发生变化，uv 会按需更新锁文件。
-
-### 启动开发服务（开启热更新）
-
-```bash
 uv run python main.py
 ```
 
-默认使用 `local` 环境，从 `config/local.yaml` 读取启动参数，其中 `server.reload: true` 开启热更新。保存 Python 文件后，服务会自动重启并加载修改。启动日志出现 `Application startup complete.` 表示应用启动完成。按 `Ctrl+C` 停止服务。
+默认读取项目根目录的 `.env.local`，本地监听 `127.0.0.1:8000`，开启热更新。默认地址：
 
-也可以直接使用 Uvicorn 命令，此时监听地址、端口和热更新由命令行参数控制：
+| 地址 | 用途 |
+| --- | --- |
+| http://127.0.0.1:8000/workbase-ai/health | 健康检查，返回 `{"status":"ok"}` |
+| http://127.0.0.1:8000/workbase-ai/docs | Swagger UI |
+| http://127.0.0.1:8000/workbase-ai/redoc | ReDoc |
+| http://127.0.0.1:8000/workbase-ai/openapi.json | OpenAPI 定义 |
+
+也可通过 Uvicorn 启动，此时监听地址、端口和热更新由命令行控制：
 
 ```bash
 uv run uvicorn main:app --reload
 ```
 
-使用 Python 入口时，热更新由所选 YAML 的 `server.reload` 控制。本地开发保持 `true`；生产部署前应将 `config/production.yaml` 的 `server.reload` 设置为 `false`。
+## 环境配置
 
-### 根据环境启动
+使用 `pydantic-settings` 读取 `.env` 格式文件及系统环境变量，不使用 YAML 或 PyYAML。
 
-在仓库根目录使用以下命令（适用于 macOS/Linux 的 zsh、bash 等 Shell）：
+| 环境 | APP_ENV | 根目录配置文件 | 当前端口 | 热更新 |
+| --- | --- | --- | --- | --- |
+| 本地（默认） | local | `.env.local` | 8000 | 开启 |
+| 测试 | test | `.env.test` | 9999 | 开启 |
+| 预发 | staging | `.env.staging` | 9999 | 开启 |
+| 生产 | production | `.env.production` | 9999 | 关闭 |
+
+每次只读取所选环境文件，不合并其他文件。配置文件路径相对于项目根目录，不受启动工作目录影响。
 
 ```bash
-# 默认启动本地环境，加载 config/local.yaml，开启热更新
+# 本地环境
 uv run python main.py
-
-# 显式指定本地环境
-APP_ENV=local uv run python main.py
 
 # 测试环境
 APP_ENV=test uv run python main.py
@@ -69,165 +51,194 @@ APP_ENV=staging uv run python main.py
 APP_ENV=production uv run python main.py
 ```
 
-当前配置值如下，启动命令本身不会自动更改端口或热更新开关：
+`.env.local` 配置格式如下；其他环境使用相同的字段名：
 
-| 环境 | `APP_ENV` | 配置文件 | 监听地址 | 热更新 |
-| --- | --- | --- | --- | --- |
-| 本地（默认） | `local` | `config/local.yaml` | `127.0.0.1:8000` | 开启 |
-| 测试 | `test` | `config/test.yaml` | `127.0.0.1:9999` | 开启 |
-| 预发 | `staging` | `config/staging.yaml` | `127.0.0.1:9999` | 开启 |
-| 生产 | `production` | `config/production.yaml` | `127.0.0.1:9999` | 开启（部署前关闭） |
+```dotenv
+APP_SERVER_HOST=127.0.0.1
+APP_SERVER_PORT=8000
+APP_SERVER_RELOAD=true
+APP_SERVER_BASE_PATH=/workbase-ai
+APP_LOGGING_LEVEL=DEBUG
 
-测试、预发和生产当前使用相同端口，在同一台机器上同时启动时需指定不同端口。例如：
+APP_MYSQL_HOST=127.0.0.1
+APP_MYSQL_PORT=3306
+APP_MYSQL_DATABASE=workbase_ai
+APP_MYSQL_USERNAME=root
+APP_MYSQL_PASSWORD=
+APP_MYSQL_CHARSET=utf8mb4
+
+APP_LLM_MODEL=
+APP_LLM_API_KEY=
+APP_LLM_BASE_URL=
+```
+
+现有 `.env.*` 文件保留在本机，并由 `.gitignore` 忽略；不提供 `.example` 文件。新环境可按上述字段创建文件，或者直接由部署平台注入系统环境变量。
+
+配置优先级为：**系统环境变量 > 当前环境文件 > 字段默认值**。例如临时覆盖端口或模型配置：
 
 ```bash
-APP_ENV=test APP_SERVER__PORT=9001 uv run python main.py
+APP_SERVER_PORT=8001 uv run python main.py
+
+APP_LLM_MODEL='your-model-name' \
+APP_LLM_API_KEY='your-api-key' \
+APP_LLM_BASE_URL='https://ai.example.com/v1' \
+uv run python main.py
 ```
 
-四个环境的路径前缀当前均为 `/workbase-ai`。默认启动及环境切换已验证，服务启动后 `/workbase-ai/health` 和接口文档可访问。服务验证临时使用环境变量覆盖端口，以避免占用已有服务端口；表中的 YAML 原始端口已单独核对。
+变量名现使用单下划线，例如 `APP_SERVER_PORT`；旧的 `APP_SERVER__PORT` 等双下划线变量不再使用。`APP_ENV` 由启动环境设置，用于选择文件，不写入 `.env.*` 文件。
 
-### 访问与验证
+`config/settings.py` 中的 `Settings` 类统一声明配置类型，Pydantic 自动处理环境变量读取、类型转换和校验。新增配置时，添加对应字段及 `.env` 配置项即可，不需要编写解析或覆盖逻辑。无效环境名、缺失必填字段或不合法字段值会在启动时失败。如果部署平台已注入所有必填变量，可以不提供 `.env` 文件。
 
-默认监听 `127.0.0.1:8000`：
-
-| 路径 | 用途 |
-| --- | --- |
-| [健康检查](http://127.0.0.1:8000/workbase-ai/health) | 返回 `{"status":"ok"}` |
-| [Swagger UI](http://127.0.0.1:8000/workbase-ai/docs) | 交互式 API 文档 |
-| [ReDoc](http://127.0.0.1:8000/workbase-ai/redoc) | API 参考文档 |
-| [OpenAPI](http://127.0.0.1:8000/workbase-ai/openapi.json) | 接口定义 |
-
-另开一个终端验证服务：
-
-```bash
-curl http://127.0.0.1:8000/workbase-ai/health
-```
-
-根路径 `/` 暂未定义接口，访问时返回 404 属于正常情况。
-
-如果 8000 端口已被占用，可以指定其他端口并保留热更新：
-
-```bash
-APP_SERVER__PORT=8001 uv run python main.py
-```
-
-### 服务路径前缀
-
-通过各环境 YAML 的 `server.base_path` 配置类似前端 basename 的统一访问前缀。当前值为 `/workbase-ai`，接口和 Swagger、ReDoc、OpenAPI 文档都位于该路径下；未带前缀的 `/health`、`/docs` 等路径返回 404。业务路由仍写 `/health`，应用工厂通过挂载整个应用统一添加前缀。
-
-`base_path` 可使用多级路径，例如 `/api/v1`。非空值须以 `/` 开头，每段只包含字母、数字、下划线或短横线，末尾的 `/` 会自动去掉。设为 `""`、`/` 或省略该字段时，不使用前缀。
-
-可以通过环境变量临时覆盖，无需修改 YAML：
-
-```bash
-# 使用 /api/v1/health、/api/v1/docs 等地址
-APP_SERVER__BASE_PATH=/api/v1 uv run python main.py
-
-# 关闭前缀，使用 /health、/docs 等地址
-APP_SERVER__BASE_PATH='' uv run python main.py
-```
-
-### 本地配置
-
-每个环境只加载一个完整的 YAML 文件，不合并公共配置。未设置 `APP_ENV` 时使用 `local`，也可以显式指定：
-
-```bash
-APP_ENV=local uv run python main.py
-```
-
-当前 `config/local.yaml`：
-
-```yaml
-server:
-  host: 127.0.0.1
-  port: 8000
-  reload: true
-  base_path: /workbase-ai
-
-logging:
-  level: DEBUG
-
-mysql:
-  host: 127.0.0.1
-  port: 3306
-  database: workbase_ai
-  username: root
-  password: ""
-  charset: utf8mb4
-```
-
-配置优先级为：**系统环境变量 > 当前环境 YAML**。嵌套字段使用 `APP_` 前缀和双下划线，例如 `APP_SERVER__PORT`、`APP_LOGGING__LEVEL`。已有的启动、日志和 MySQL 字段保留 Pydantic 校验，端口必须在 1–65535 之间；日志级别使用大写。
-
-YAML 中新增的顶层配置节、嵌套字段和列表会自动保留，不需要在 `settings.py` 中逐个声明。例如添加：
-
-```yaml
-redis:
-  host: localhost
-  port: 6379
-  tls:
-    enabled: false
-```
-
-即可在代码中读取：
+密码和 API Key 使用 `SecretStr`，常规打印和 JSON 序列化会脱敏；实际使用时读取原值：
 
 ```python
 from config.settings import get_settings
 
 settings = get_settings()
-settings.redis.host
-settings.redis.tls.enabled
-settings["redis"]["port"]
+model = settings.llm_model
+base_url = settings.llm_base_url
+api_key = settings.llm_api_key.get_secret_value()
 ```
 
-字段名与配置对象的方法重名时，使用方括号读取。已有配置节也可以直接添加新字段，例如 `mysql.pool.size`。新增字段保留 YAML 的值类型，不自动附加业务校验；需要特定规则时再为对应字段补充校验。
+配置读取使用 `lru_cache` 缓存。修改 `.env` 或系统环境变量后需要重启进程；Python 代码的热更新由 `APP_SERVER_RELOAD` 控制。
 
-新增字段同样支持环境变量，例如 `APP_REDIS__PORT=6380`、`APP_REDIS__TLS__ENABLED=true`。环境变量会保留 YAML 中已有字符串字段的字符串类型；其他值尝试按 JSON 解析数字、布尔值、列表或对象，无法解析时作为字符串。更具体的嵌套变量会覆盖同一配置节的 JSON 对象变量。
+MySQL 目前仅加载配置，不建立数据库连接。LLM 配置由聊天接口使用；允许留空以便健康检查启动，但配置不完整时聊天接口返回 503。
 
-不自动读取 `.env`。密钥通过系统环境变量注入，不写入 YAML 或提交到仓库。修改 YAML 或环境变量后需手动重启服务；Python 代码修改会自动重启。
+## 服务路径前缀
 
-MySQL 配置目前仅加载并校验，不建立连接、创建数据库或执行 SQL，因此无需运行 MySQL 即可启动服务。上述数据库名和用户名为本地配置初始值，可按需修改；空密码为占位值，真实密码通过 `APP_MYSQL__PASSWORD` 注入。其他字段同样支持环境变量覆盖，例如：
+`APP_SERVER_BASE_PATH` 控制接口和文档的统一路径前缀，默认 `/workbase-ai`。支持 `/api/v1` 等多级路径，每段使用字母、数字、下划线或短横线；末尾斜线会移除。留空或设为 `/` 时不使用前缀。
 
 ```bash
-APP_MYSQL__HOST=127.0.0.1 APP_MYSQL__PORT=3307 uv run python main.py
+APP_SERVER_BASE_PATH=/api/v1 uv run python main.py
+APP_SERVER_BASE_PATH='' uv run python main.py
 ```
 
-`mysql.password` 使用 `SecretStr` 保存，配置对象的常规打印及 JSON 序列化会隐藏该字段。自动加载的新增字段不自动识别为密钥，避免打印包含敏感字段的完整配置。
+应用入口直接使用已校验的配置挂载 FastAPI 子应用，没有额外的路由配置模块。
 
-环境名支持 `local`、`test`、`staging`、`production`，四个环境文件均已填写。环境名无效、配置文件缺失、为空或字段不合法时，启动会报错。
+## 聊天接口（SSE 流式响应）
 
-### 运行测试
+`POST /workbase-ai/chat` 接收 JSON 消息，使用 LangChain `ChatOpenAI.astream()` 逐块生成回复，并通过 `sse-starlette` 返回 `text/event-stream`。前缀由 `APP_SERVER_BASE_PATH` 决定。供应商需要兼容 OpenAI Chat Completions 的流式协议，模型配置仍使用 `APP_LLM_MODEL`、`APP_LLM_API_KEY`、`APP_LLM_BASE_URL`。
 
-使用 pytest 运行配置测试和健康检查接口测试。`uv sync` 默认安装测试所需的开发依赖 `pytest` 和 `httpx`。
+```bash
+curl -N -X POST http://127.0.0.1:8000/workbase-ai/chat \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: text/event-stream' \
+  -d '{"message":"你好，请介绍一下你自己"}'
+```
+
+响应示例，每个事件之间有一个空行：
+
+```text
+event: delta
+data: {"content":"你好！"}
+
+event: delta
+data: {"content":"我是你的 AI 助手。"}
+
+event: done
+data: {}
+
+```
+
+| 事件 | data 内容 | 前端处理 |
+| --- | --- | --- |
+| delta | `{"content":"新增文本"}` | 追加文本到当前回复 |
+| done | `{}` | 本次回复正常完成 |
+| error | `{"code":504,"message":"大模型响应超时，请稍后重试"}` | 展示错误并结束接收，不会再发送 done |
+
+文本块可能包含换行或引号，均通过 JSON 编码。每 15 秒发送 SSE 注释心跳，前端忽略即可；设置响应头关闭代理缓冲。如果部署的代理仍缓冲响应，还需要在代理侧关闭缓冲。
+
+前端通过同域地址或开发代理使用 `fetch` 接收 POST 流。网络数据块不等于完整事件，必须保留未解析完的数据，不能直接对每次读取结果执行 `JSON.parse`：
+
+```javascript
+async function chat(message, onDelta, signal) {
+  const response = await fetch('/workbase-ai/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify({ message }),
+    signal,
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(JSON.stringify(error.detail));
+  }
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = '';
+  let reply = '';
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) throw new Error('连接提前关闭，未收到完成事件');
+      buffer = (buffer + value).replace(/\r\n/g, '\n');
+      let boundary;
+      while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        const lines = frame.split('\n');
+        const event = lines.find(line => line.startsWith('event:'))?.slice(6).trim();
+        if (!event) continue; // 忽略注释心跳
+        const data = JSON.parse(lines
+          .filter(line => line.startsWith('data:'))
+          .map(line => line.slice(5).trimStart())
+          .join('\n'));
+        if (event === 'delta') {
+          reply += data.content;
+          onDelta(data.content);
+        } else if (event === 'done') {
+          return reply;
+        } else if (event === 'error') {
+          throw new Error(data.message);
+        }
+      }
+    }
+  } finally {
+    await reader.cancel();
+    reader.releaseLock();
+  }
+}
+
+const controller = new AbortController();
+const reply = await chat('你好', text => {
+  console.log(text); // 追加到界面；不要覆盖此前已收到的文本
+}, controller.signal);
+// 用户点击停止时调用 controller.abort()；调用方可捕获 AbortError。
+```
+
+每次请求只发送一条消息，不保存聊天历史。去除首尾空白后的消息须为 1–20000 个字符。模型网络请求超时为 60 秒，不自动重试；向前端发送数据超过 30 秒未完成会断开连接。前端断开或取消请求时，后端关闭上游生成流；应用退出时关闭复用的模型客户端。
+
+输入不合法时返回 HTTP 422，模型配置缺失时在发送流之前返回 HTTP 503。流开始后 HTTP 状态已固定为 200，供应商连接、鉴权等错误通过 `error` 事件的 `code: 502` 传递，超时使用 `code: 504`，上游未返回文本使用 `code: 502`。供应商错误原文和 API Key 不返回前端。健康检查不发起模型请求。
+
+## 测试
 
 ```bash
 uv run pytest
+uv run pytest tests/test_settings.py tests/test_chat.py -v
 ```
 
-配置测试覆盖默认环境、环境变量覆盖、环境选择、字段校验、密码隐藏和动态新增字段。测试通过 fixture 使用独立的临时 YAML 文件，隔离 `APP_` 环境变量和配置缓存，不依赖本机 `local.yaml` 的具体内容。接口测试使用 FastAPI TestClient，验证有前缀和无前缀时的健康检查与文档地址，无需单独启动服务或连接 MySQL。
+测试覆盖 `.env` 环境选择、系统变量覆盖、类型转换、必填字段和端口校验、密钥脱敏、配置缓存、路径前缀及健康检查。聊天测试通过模拟上游 HTTP 服务，覆盖内容转发、分块事件、完成事件、输入校验、错误脱敏、中途超时、断线取消与客户端关闭。测试使用临时 `.env.local` 并隔离 `APP_` 环境变量，不读取本机真实密钥，也不依赖 MySQL 或模型服务。
 
-只运行配置测试或查看详细结果：
-
-```bash
-uv run pytest tests/test_settings.py -v
-```
-
-## 当前目录
+## 目录
 
 ```text
 .
-├── main.py          # FastAPI 应用、健康检查和开发启动入口
+├── main.py
 ├── config/
-│   ├── settings.py  # 配置模型、环境选择及加载逻辑
-│   ├── local.yaml   # 本地开发配置，开启热更新
-│   ├── test.yaml    # 测试环境配置
-│   ├── staging.yaml # 预发环境配置
-│   └── production.yaml # 生产环境配置
-├── tests/           # pytest fixture、配置加载和健康检查接口测试
-├── pyproject.toml   # 项目元数据、依赖和 uv 源配置
-├── uv.lock          # 依赖锁定文件
-├── .python-version # 开发使用的 Python 版本
-├── .gitignore      # 本地配置、缓存等忽略规则
+│   ├── __init__.py
+│   └── settings.py
+├── .env.local
+├── .env.test
+├── .env.staging
+├── .env.production
+├── modules/
+│   └── chat/         # 聊天路由、请求响应模型及 LangChain 调用服务
+├── tests/
+├── pyproject.toml
+├── uv.lock
 └── README.md
 ```
 
-`docs/` 当前为空，后续按实际实现补充架构文档。
+已通过 LangChain 实现 SSE 流式单次聊天；LangGraph 工作流、聊天历史及持久化尚未实现。

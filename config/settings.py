@@ -1,19 +1,14 @@
-import json
 import os
 import re
-from collections.abc import Callable
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
-import yaml
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
-from pydantic_settings import (
-    BaseSettings,
-    PydanticBaseSettingsSource,
-    SettingsConfigDict,
-)
+from pydantic import Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+CONFIG_DIR = Path(__file__).resolve().parent.parent
 
 
 class Environment(StrEnum):
@@ -23,136 +18,38 @@ class Environment(StrEnum):
     PRODUCTION = "production"
 
 
-class ConfigSection(BaseModel):
-    model_config = ConfigDict(extra="allow")
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="APP_", env_file_encoding="utf-8")
 
-    @model_validator(mode="before")
-    @classmethod
-    def wrap_extra_sections(cls, data: Any) -> Any:
-        if not isinstance(data, dict):
-            return data
-        return {
-            key: value if key in cls.model_fields else _wrap_config(value)
-            for key, value in data.items()
-        }
+    server_host: str = Field(min_length=1)
+    server_port: int = Field(ge=1, le=65535)
+    server_reload: bool
+    server_base_path: str = ""
+    logging_level: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE"]
 
-    def __getitem__(self, key: str) -> Any:
-        if key in type(self).model_fields:
-            return getattr(self, key)
-        return self.__pydantic_extra__[key]
+    mysql_host: str = Field(min_length=1)
+    mysql_port: int = Field(ge=1, le=65535)
+    mysql_database: str = Field(min_length=1)
+    mysql_username: str = Field(min_length=1)
+    mysql_password: SecretStr
+    mysql_charset: str = Field(min_length=1)
 
+    llm_model: str = ""
+    llm_api_key: SecretStr = SecretStr("")
+    llm_base_url: str = ""
 
-def _wrap_config(value: Any) -> Any:
-    if isinstance(value, dict):
-        return ConfigSection.model_validate(value)
-    if isinstance(value, list):
-        return [_wrap_config(item) for item in value]
-    return value
-
-
-def _environment_overrides(config: dict[str, Any]) -> dict[str, Any]:
-    overrides: dict[str, Any] = {}
-    variables = sorted(os.environ, key=lambda name: name.count("__"))
-    for name in variables:
-        if not name.upper().startswith("APP_") or name.upper() == "APP_ENV":
-            continue
-        parts = name[4:].split("__")
-        if any(not part for part in parts):
-            raise ValueError(f"Invalid configuration environment variable: {name}")
-        target = overrides
-        template = config
-        for index, part in enumerate(parts):
-            known = template if isinstance(template, dict) else {}
-            key = next(
-                (key for key in known if key.lower() == part.lower()), part.lower()
-            )
-            template = known.get(key)
-            if index == len(parts) - 1:
-                value = os.environ[name]
-                if not isinstance(template, str):
-                    try:
-                        value = json.loads(value)
-                    except json.JSONDecodeError:
-                        pass
-                target[key] = value
-            else:
-                target = target.setdefault(key, {})
-                if not isinstance(target, dict):
-                    raise ValueError(f"Conflicting configuration environment variable: {name}")
-    return overrides
-
-
-class ServerSettings(ConfigSection):
-
-    host: str = Field(min_length=1)
-    port: int = Field(ge=1, le=65535)
-    reload: bool
-    base_path: str = ""
-
-    @field_validator("base_path")
+    @field_validator("server_base_path")
     @classmethod
     def validate_base_path(cls, value: str) -> str:
         if value in ("", "/"):
             return ""
         value = value.rstrip("/")
         if not re.fullmatch(r"(?:/[A-Za-z0-9_-]+)+", value):
-            raise ValueError(
-                "base_path must start with / and contain only path segments "
-                "of letters, digits, _ or -"
-            )
+            raise ValueError("server_base_path must be a valid path starting with /")
         return value
-
-
-class LoggingSettings(ConfigSection):
-
-    level: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE"]
-
-
-class MySQLSettings(ConfigSection):
-
-    host: str = Field(min_length=1)
-    port: int = Field(ge=1, le=65535)
-    database: str = Field(min_length=1)
-    username: str = Field(min_length=1)
-    password: SecretStr
-    charset: str = Field(min_length=1)
-
-
-class Settings(BaseSettings, ConfigSection):
-    model_config = SettingsConfigDict(
-        env_prefix="APP_",
-        env_nested_delimiter="__",
-        extra="allow",
-    )
-
-    server: ServerSettings
-    logging: LoggingSettings
-    mysql: MySQLSettings
-
-    @classmethod
-    def settings_customise_sources(
-        cls,
-        settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource | Callable[[], dict[str, Any]], ...]:
-        environment = Environment(os.environ.get("APP_ENV", "local"))
-        config_file = Path(__file__).resolve().parent / f"{environment.value}.yaml"
-        if not config_file.is_file():
-            raise FileNotFoundError(f"Configuration file not found: {config_file}")
-
-        with config_file.open(encoding="utf-8") as file:
-            config = yaml.safe_load(file)
-        if config is None or config == {}:
-            raise ValueError(f"Configuration file is empty: {config_file}")
-        if not isinstance(config, dict):
-            raise ValueError(f"Configuration file must contain a mapping: {config_file}")
-
-        return init_settings, lambda: _environment_overrides(config), lambda: config
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings()
+    environment = Environment(os.environ.get("APP_ENV", "local"))
+    return Settings(_env_file=CONFIG_DIR / f".env.{environment.value}")
